@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.felix.scr.impl.helper.Logger;
+import org.apache.felix.scr.impl.logger.BundleLogger;
 import org.apache.felix.scr.impl.metadata.ComponentMetadata;
 import org.apache.felix.scr.impl.metadata.DSVersion;
 import org.apache.felix.scr.impl.metadata.PropertyMetadata;
@@ -47,7 +47,7 @@ public class XmlHandler implements KXml2SAXHandler
     private final Bundle m_bundle;
 
     // logger for any messages
-    private final Logger m_logger;
+    private final BundleLogger m_logger;
 
     private final boolean m_globalObsoleteFactoryComponentFactory;
 
@@ -60,7 +60,7 @@ public class XmlHandler implements KXml2SAXHandler
     private ServiceMetadata m_currentService;
 
     // A list of component descriptors contained in the file
-    private List<ComponentMetadata> m_components = new ArrayList<ComponentMetadata>();
+    private List<ComponentMetadata> m_components = new ArrayList<>();
 
     // PropertyMetaData whose value attribute is missing, hence has element data
     private PropertyMetadata m_pendingProperty;
@@ -79,7 +79,7 @@ public class XmlHandler implements KXml2SAXHandler
 
     // creates an instance with the bundle owning the component descriptor
     // file parsed by this instance
-    public XmlHandler( Bundle bundle, Logger logger, boolean globalObsoleteFactoryComponentFactory, boolean globalDelayedKeepInstances )
+    public XmlHandler( Bundle bundle, BundleLogger logger, boolean globalObsoleteFactoryComponentFactory, boolean globalDelayedKeepInstances )
     {
         m_bundle = bundle;
         m_logger = logger;
@@ -222,11 +222,18 @@ public class XmlHandler implements KXml2SAXHandler
                     m_currentComponent.setDelayedKeepInstances(m_globalDelayedKeepInstances || "true".equals(attributes.getAttribute(XmlConstants.NAMESPACE_URI_1_0_FELIX_EXTENSIONS, XmlConstants.ATTR_DELAYED_KEEP_INSTANCES)));
 
                     // activation-fields is optional (since DS 1.4)
-                    String activationFields = attributes.getAttribute( "activation-fields" );
+                    String activationFields = attributes.getAttribute( XmlConstants.ATTR_ACTIVATION_FIELDS );
                     if ( activationFields != null )
                     {
                         final String[] fields = activationFields.split(" ");
                         m_currentComponent.setActivationFields( fields );
+                    }
+
+                    // init is optional (since DS 1.4)
+                    String init = attributes.getAttribute( XmlConstants.ATTR_INIT );
+                    if ( init != null )
+                    {
+                        m_currentComponent.setInit( init );
                     }
 
                     // Add this component to the list
@@ -237,8 +244,8 @@ public class XmlHandler implements KXml2SAXHandler
                 else if ( !this.isComponent )
                 {
                     m_logger.log( LogService.LOG_DEBUG,
-                            "Not currently parsing a component; ignoring element {0} (bundle {1})", new Object[]
-                                    { localName, m_bundle.getLocation() }, null, null, null );
+                            "Not currently parsing a component; ignoring element {0} (bundle {1})", null,
+                                    localName, m_bundle.getLocation() );
                 }
 
                 // 112.4.4 Implementation
@@ -418,8 +425,8 @@ public class XmlHandler implements KXml2SAXHandler
                 // used by the Maven SCR Plugin, which is just silently ignored)
                 else if ( !localName.equals( XmlConstants.EL_COMPONENTS ) )
                 {
-                    m_logger.log( LogService.LOG_DEBUG, "Ignoring unsupported element {0} (bundle {1})", new Object[]
-                            { localName, m_bundle.getLocation() }, null, null, null );
+                    m_logger.log( LogService.LOG_DEBUG, "Ignoring unsupported element {0} (bundle {1})", null,
+                            localName, m_bundle.getLocation() );
                 }
             }
             catch ( Exception ex )
@@ -432,8 +439,8 @@ public class XmlHandler implements KXml2SAXHandler
         // used by the Maven SCR Plugin, which is just silently ignored)
         else if ( !localName.equals( XmlConstants.EL_COMPONENTS ) )
         {
-            m_logger.log( LogService.LOG_DEBUG, "Ignoring unsupported element '{'{0}'}'{1} (bundle {2})", new Object[]
-                    { uri, localName, m_bundle.getLocation() }, null, null, null );
+            m_logger.log( LogService.LOG_DEBUG, "Ignoring unsupported element '{'{0}'}'{1} (bundle {2})", null,
+                    uri, localName, m_bundle.getLocation()  );
         }
     }
 

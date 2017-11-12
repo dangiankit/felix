@@ -18,23 +18,19 @@
  */
 package org.apache.felix.cm.impl;
 
-import java.io.IOException;
 import java.util.Dictionary;
 import java.util.Hashtable;
-import java.util.SortedMap;
-import java.util.TreeMap;
 
 import org.apache.felix.cm.PersistenceManager;
 import org.apache.felix.cm.file.FilePersistenceManager;
+import org.apache.felix.cm.impl.persistence.PersistenceManagerTracker;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
+import org.osgi.framework.BundleException;
 import org.osgi.framework.Constants;
-import org.osgi.framework.ServiceReference;
+import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceRegistration;
-import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.log.LogService;
-import org.osgi.util.tracker.ServiceTracker;
-import org.osgi.util.tracker.ServiceTrackerCustomizer;
 
 /**
  * Activator for the configuration admin implementation.
@@ -56,110 +52,54 @@ public class Activator implements BundleActivator
 {
 
     /**
-     * The name of the bundle context property defining the location for the
+     * The name of the framework context property defining the location for the
      * configuration files (value is "felix.cm.dir").
      *
      * @see #start(BundleContext)
      */
     private static final String CM_CONFIG_DIR = "felix.cm.dir";
 
-    private volatile ConfigurationManager manager;
+    /**
+     * The name of the framework context property defining the persistence
+     * manager to be used. If not specified, the old behaviour is used
+     * and all available pms are used
+     *
+     * @see #start(BundleContext)
+     */
+    private static final String CM_CONFIG_PM = "felix.cm.pm";
+
+    private volatile PersistenceManagerTracker tracker;
 
     // the service registration of the default file persistence manager
     private volatile ServiceRegistration<PersistenceManager> filepmRegistration;
 
-    // service tracker for optional coordinator
-    @SuppressWarnings("rawtypes")
-    private volatile ServiceTracker coordinatorTracker;
-
-    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
-    public void start( final BundleContext bundleContext )
+    public void start( final BundleContext bundleContext ) throws BundleException
     {
         // setup log
         Log.logger.start(bundleContext);
 
         // register default file persistence manager
-        // set up the location (might throw IllegalArgumentException)
-        DynamicBindings dynamicBindings = null;
+        final PersistenceManager defaultPM = this.registerFilePersistenceManager(bundleContext);
+        if ( defaultPM == null )
+        {
+            throw new BundleException("Unable to register default persistence manager.");
+        }
+
+        String configuredPM = bundleContext.getProperty(CM_CONFIG_PM);
+        if ( configuredPM != null && configuredPM.isEmpty() )
+        {
+            configuredPM = null;
+        }
         try
         {
-            final FilePersistenceManager fpm = new FilePersistenceManager( bundleContext,
-                    bundleContext.getProperty( CM_CONFIG_DIR ) );
-            final Dictionary<String, Object> props = new Hashtable<String, Object>();
-            props.put( Constants.SERVICE_DESCRIPTION, "Platform Filesystem Persistence Manager" );
-            props.put( Constants.SERVICE_VENDOR, "The Apache Software Foundation" );
-            props.put( Constants.SERVICE_RANKING, new Integer( Integer.MIN_VALUE ) );
-            filepmRegistration = bundleContext.registerService( PersistenceManager.class, fpm, props );
-
-            // setup dynamic configuration bindings
-            dynamicBindings = new DynamicBindings( bundleContext, fpm );
+            this.tracker = new PersistenceManagerTracker(bundleContext, defaultPM, configuredPM);
         }
-        catch ( IOException ioe )
+        catch ( InvalidSyntaxException iae )
         {
-            Log.logger.log( LogService.LOG_ERROR, "Failure setting up dynamic configuration bindings", ioe );
+            Log.logger.log( LogService.LOG_ERROR, "Cannot create the persistence manager tracker", iae );
+            throw new BundleException(iae.getMessage(), iae);
         }
-        catch ( IllegalArgumentException iae )
-        {
-            Log.logger.log( LogService.LOG_ERROR, "Cannot create the FilePersistenceManager", iae );
-        }
-
-        this.manager = new ConfigurationManager();
-        // start coordinator tracker
-        coordinatorTracker = new ServiceTracker(bundleContext, "org.osgi.service.coordinator.Coordinator",
-                new ServiceTrackerCustomizer()
-        {
-            private final SortedMap<ServiceReference, Object> sortedServices = new TreeMap<ServiceReference, Object>();
-
-            @Override
-            public Object addingService(final ServiceReference reference)
-            {
-                final Object srv = bundleContext.getService(reference);
-                if ( srv != null )
-                {
-                    synchronized ( this.sortedServices )
-                    {
-                        sortedServices.put(reference, srv);
-                        manager.setCoordinator(sortedServices.get(sortedServices.lastKey()));
-                    }
-                }
-                return srv;
-            }
-
-            @Override
-            public void modifiedService(final ServiceReference reference, final Object srv) {
-                synchronized ( this.sortedServices )
-                {
-                    // update the map, service ranking might have changed
-                    sortedServices.remove(reference);
-                    sortedServices.put(reference, srv);
-                    manager.setCoordinator(sortedServices.get(sortedServices.lastKey()));
-                }
-            }
-
-            @Override
-            public void removedService(final ServiceReference reference, final Object service) {
-                synchronized ( this.sortedServices )
-                {
-                    sortedServices.remove(reference);
-                    if ( sortedServices.isEmpty() )
-                    {
-                        manager.setCoordinator(null);
-                    }
-                    else
-                    {
-                        manager.setCoordinator(sortedServices.get(sortedServices.lastKey()));
-                    }
-                }
-                bundleContext.ungetService(reference);
-            }
-        });
-        coordinatorTracker.open();
-        // start configuration manager implementation
-        final ServiceReference<ConfigurationAdmin> ref = this.manager.start(dynamicBindings, bundleContext);
-
-        // update log
-        Log.logger.set(ref);
     }
 
 
@@ -169,25 +109,46 @@ public class Activator implements BundleActivator
         // stop logger
         Log.logger.stop();
 
-        // stop configuration manager implementation
-        if ( this.manager != null )
+        // stop tracker and configuration manager implementation
+        if ( this.tracker != null )
         {
-            this.manager.stop(bundleContext);
-            this.manager = null;
+            this.tracker.stop();
+            this.tracker = null;
         }
 
-        // stop coordinator tracker
-        if ( this.coordinatorTracker != null )
-        {
-            this.coordinatorTracker.close();
-            this.coordinatorTracker = null;
-        }
+        // shutdown the file persistence manager and unregister
+        this.unregisterFilePersistenceManager();
+    }
 
-        // shutdown the file persistence manager
-        if ( filepmRegistration != null )
+    private PersistenceManager registerFilePersistenceManager(final BundleContext bundleContext)
+    {
+        try
         {
-            filepmRegistration.unregister();
-            filepmRegistration = null;
+            final FilePersistenceManager fpm = new FilePersistenceManager( bundleContext,
+                    bundleContext.getProperty( CM_CONFIG_DIR ) );
+            final Dictionary<String, Object> props = new Hashtable<>();
+            props.put( Constants.SERVICE_DESCRIPTION, "Platform Filesystem Persistence Manager" );
+            props.put( Constants.SERVICE_VENDOR, "The Apache Software Foundation" );
+            props.put( Constants.SERVICE_RANKING, new Integer( Integer.MIN_VALUE ) );
+            props.put( PersistenceManager.PROPERTY_NAME, FilePersistenceManager.DEFAULT_PERSISTENCE_MANAGER_NAME);
+            filepmRegistration = bundleContext.registerService( PersistenceManager.class, fpm, props );
+
+            return fpm;
+
+        }
+        catch ( final IllegalArgumentException iae )
+        {
+            Log.logger.log( LogService.LOG_ERROR, "Cannot create the FilePersistenceManager", iae );
+        }
+        return null;
+    }
+
+    private void unregisterFilePersistenceManager()
+    {
+        if ( this.filepmRegistration != null )
+        {
+            this.filepmRegistration.unregister();
+            this.filepmRegistration = null;
         }
     }
 }

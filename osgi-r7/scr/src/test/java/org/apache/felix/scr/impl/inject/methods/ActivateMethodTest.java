@@ -26,6 +26,8 @@ import java.util.Map;
 
 import org.apache.felix.scr.impl.inject.ActivatorParameter;
 import org.apache.felix.scr.impl.inject.ComponentMethodsImpl;
+import org.apache.felix.scr.impl.logger.ComponentLogger;
+import org.apache.felix.scr.impl.logger.MockComponentLogger;
 import org.apache.felix.scr.impl.manager.ComponentActivator;
 import org.apache.felix.scr.impl.manager.ComponentContainer;
 import org.apache.felix.scr.impl.manager.ComponentContextImpl;
@@ -327,6 +329,10 @@ public class ActivateMethodTest extends TestCase
                 return false;
             }
 
+            @Override
+            public ComponentLogger getLogger() {
+                return new MockComponentLogger();
+            }
         };
         return container;
     }

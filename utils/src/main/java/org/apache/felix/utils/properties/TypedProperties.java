@@ -193,7 +193,7 @@ public class TypedProperties extends AbstractMap<String, Object> {
         return put(key, Collections.singletonList(comment), value);
     }
 
-    private Object put(String key, List<String> commentLines, List<String> valueLines) {
+    public Object put(String key, List<String> commentLines, List<String> valueLines) {
         String old = storage.put(key, commentLines, valueLines);
         return old != null ? storage.typed ? convertFromString(old) : old : null;
     }
@@ -336,7 +336,7 @@ public class TypedProperties extends AbstractMap<String, Object> {
             ((DynamicMap) map).init(callback, finalSubstitution);
         }
         for (Map.Entry<String, TypedProperties> entry : properties.entrySet()) {
-            entry.getValue().storage.putAll(dynamic.get(entry.getKey()));
+            entry.getValue().storage.putAllSubstituted(dynamic.get(entry.getKey()));
         }
     }
 

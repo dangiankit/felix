@@ -23,11 +23,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -35,6 +37,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.felix.framework.Felix;
 import org.apache.felix.framework.Logger;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.Constants;
@@ -83,7 +86,43 @@ public class Util
                     Logger.LOG_ERROR, "Unable to load any configuration properties.", ex);
             }
         }
-        return defaultProperties;
+        return initializeJPMS(defaultProperties);
+    }
+
+    private static Properties initializeJPMS(Properties properties)
+    {
+        try
+        {
+            Class<?> c_ModuleLayer = Felix.class.getClassLoader().loadClass("java.lang.ModuleLayer");
+            Class<?> c_Module = Felix.class.getClassLoader().loadClass("java.lang.Module");
+            Method m_getLayer = c_Module.getMethod("getLayer");
+            Method m_getModule = Class.class.getMethod("getModule");
+            Method m_canRead = c_Module.getMethod("canRead", c_Module);
+            Method m_getName = c_Module.getMethod("getName");
+
+            Object self = m_getModule.invoke(Felix.class);
+            Object moduleLayer = m_getLayer.invoke(self);
+
+            if (moduleLayer == null)
+            {
+                moduleLayer = c_ModuleLayer.getMethod("boot").invoke(null);
+            }
+
+            for (Object module : ((Iterable) c_ModuleLayer.getMethod("modules").invoke(moduleLayer)))
+            {
+                if ((Boolean) m_canRead.invoke(self, module))
+                {
+                    Object name = m_getName.invoke(module);
+                    properties.put("felix.detect.jpms." + name, name);
+                }
+            }
+            properties.put("felix.detect.jpms", "jpms");
+        }
+        catch (Exception ex)
+        {
+            // Not much we can do - probably not on java9
+        }
+        return properties;
     }
 
     public static String getDefaultProperty(Logger logger, String name)
@@ -123,6 +162,20 @@ public class Util
                 value = (value != null)
                     ? Util.substVars(value, currentPropertyKey, null, props): null;
                 result.put(currentPropertyKey, value);
+            }
+        }
+        return result;
+    }
+
+    public static Properties toProperties(Map map)
+    {
+        Properties result = new Properties();
+        for (Iterator iter = map.entrySet().iterator(); iter.hasNext();)
+        {
+            Entry entry = (Entry) iter.next();
+            if (entry.getKey() != null && entry.getValue() != null)
+            {
+                result.setProperty(entry.getKey().toString(), entry.getValue().toString());
             }
         }
         return result;

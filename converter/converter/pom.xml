@@ -28,7 +28,7 @@
 
     <name>Apache Felix Converter</name>
     <artifactId>org.apache.felix.converter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -39,11 +39,21 @@
 
     <properties>
         <felix.java.version>8</felix.java.version>
-        <felix.java.signature.artifactId>java17</felix.java.signature.artifactId> <!-- Can we move this to java17? -->
+        <felix.java.signature.artifactId>java17</felix.java.signature.artifactId>
     </properties>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.7</source>
+                    <target>1.7</target>
+                    <testSource>1.8</testSource>
+                    <testTarget>1.8</testTarget>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-bundle-plugin</artifactId>
@@ -80,7 +90,6 @@
                             org.osgi.util.converter,
                             *
                         </Import-Package>
-                        <!--Include-Resource>{maven-resources},OSGI-OPT/src=src/main/java</Include-Resource-->
                         <_sources>true</_sources>
                     </instructions>
                 </configuration>

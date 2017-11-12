@@ -27,6 +27,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLStreamHandler;
@@ -4612,7 +4613,7 @@ public class Felix extends BundleImpl implements Framework
             System.getProperty("user.language"));
         m_configMutableMap.put(
             FelixConstants.SUPPORTS_FRAMEWORK_EXTENSION,
-            "true");
+            ExtensionManager.m_extenderFramework != null ? "true" : "false");
         m_configMutableMap.put(
             FelixConstants.SUPPORTS_FRAMEWORK_FRAGMENT,
             "true");
@@ -4621,7 +4622,7 @@ public class Felix extends BundleImpl implements Framework
             "true");
         m_configMutableMap.put(
             FelixConstants.SUPPORTS_BOOTCLASSPATH_EXTENSION,
-            "false");
+            ExtensionManager.m_extenderBoot != null ? "true" : "false");
 
         String s = null;
         s = NativeLibraryClause.normalizeOSName(System.getProperty("os.name"));
@@ -4642,6 +4643,8 @@ public class Felix extends BundleImpl implements Framework
         // if not explicitly configured.
         loadPrefixFromDefaultIfNotDefined(m_configMutableMap, defaultProperties, FelixConstants.NATIVE_OS_NAME_ALIAS_PREFIX);
         loadPrefixFromDefaultIfNotDefined(m_configMutableMap, defaultProperties, FelixConstants.NATIVE_PROC_NAME_ALIAS_PREFIX);
+        loadPrefixFromDefaultIfNotDefined(m_configMutableMap, defaultProperties, "felix.detect.jpms.");
+        loadPrefixFromDefaultIfNotDefined(m_configMutableMap, defaultProperties, "felix.jpms.");
     }
 
     private void loadFromDefaultIfNotDefined(Properties defaultProperties, String propertyName)
@@ -4986,11 +4989,6 @@ public class Felix extends BundleImpl implements Framework
             }
 
             m_dependencies.removeDependents(adapt(BundleRevision.class));
-
-            if (m_extensionManager != null)
-            {
-                m_extensionManager.removeExtensions(Felix.this);
-            }
 
             // Dispose of the bundle cache.
             m_cache.release();

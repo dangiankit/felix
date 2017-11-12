@@ -90,7 +90,7 @@ public class CommandSessionImpl implements CommandSession, Converter
     protected CommandSessionImpl(CommandProcessorImpl shell, CommandSessionImpl parent)
     {
         this.currentDir = parent.currentDir;
-        this.executor = Executors.newCachedThreadPool();
+        this.executor = Executors.newCachedThreadPool(ThreadUtils.namedThreadFactory("session"));
         this.processor = shell;
         this.channels = parent.channels;
         this.in = parent.in;
@@ -486,6 +486,16 @@ public class CommandSessionImpl implements CommandSession, Converter
     public Object expr(CharSequence expr)
     {
         return processor.expr(this, expr);
+    }
+
+    public Object invoke(Object target, String name, List<Object> args) throws Exception
+    {
+        return processor.invoke(this, target, name, args);
+    }
+
+    public Path redirect(Path path, int mode)
+    {
+        return processor.redirect(this, path, mode);
     }
 
     @Override

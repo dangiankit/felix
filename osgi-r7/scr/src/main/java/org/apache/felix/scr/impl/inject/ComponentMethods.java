@@ -18,6 +18,7 @@
  */
 package org.apache.felix.scr.impl.inject;
 
+import org.apache.felix.scr.impl.logger.ComponentLogger;
 import org.apache.felix.scr.impl.metadata.ComponentMetadata;
 
 /**
@@ -25,7 +26,9 @@ import org.apache.felix.scr.impl.metadata.ComponentMetadata;
  */
 public interface ComponentMethods<T>
 {
-    void initComponentMethods( ComponentMetadata componentMetadata, Class<T> implementationObjectClass );
+    void initComponentMethods( ComponentMetadata componentMetadata,
+            Class<T> implementationObjectClass,
+            ComponentLogger logger);
 
     LifecycleMethod getActivateMethod();
 
@@ -35,6 +38,6 @@ public interface ComponentMethods<T>
 
     ReferenceMethods getBindMethods(String refName );
 
-	ConstructorMethod<T> getConstructor();
+	ComponentConstructor<T> getConstructor();
 
 }

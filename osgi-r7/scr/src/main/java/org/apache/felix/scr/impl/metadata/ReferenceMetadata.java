@@ -117,7 +117,8 @@ public class ReferenceMetadata
     private String m_field_option;
 
     // Name of the value type for the field (optional, since DS 1.3)
-    private String m_field_collection_type;
+    // Since 1.4 also used for the parameter collection type (constructor)
+    private String m_collection_type;
 
     // Policy attribute (optional, default = static)
     private String m_policy;
@@ -132,6 +133,7 @@ public class ReferenceMetadata
     private String m_parameter;
 
     // Parameter index, set based on {@code m_parameter} after validation
+    // (optional, since DS 1.4)
     private Integer m_parameterIndex;
 
     // Flags that store the values passed as strings
@@ -146,25 +148,25 @@ public class ReferenceMetadata
 
     static
     {
-        CARDINALITY_VALID = new TreeSet<String>();
+        CARDINALITY_VALID = new TreeSet<>();
         CARDINALITY_VALID.add( CARDINALITY_0_1 );
         CARDINALITY_VALID.add( CARDINALITY_0_N );
         CARDINALITY_VALID.add( CARDINALITY_1_1 );
         CARDINALITY_VALID.add( CARDINALITY_1_N );
 
-        POLICY_VALID = new TreeSet<String>();
+        POLICY_VALID = new TreeSet<>();
         POLICY_VALID.add( POLICY_DYNAMIC );
         POLICY_VALID.add( POLICY_STATIC );
 
-        POLICY_OPTION_VALID = new TreeSet<String>();
+        POLICY_OPTION_VALID = new TreeSet<>();
         POLICY_OPTION_VALID.add( POLICY_OPTION_RELUCTANT );
         POLICY_OPTION_VALID.add( POLICY_OPTION_GREEDY );
 
-        FIELD_STRATEGY_VALID = new TreeSet<String>();
+        FIELD_STRATEGY_VALID = new TreeSet<>();
         FIELD_STRATEGY_VALID.add( FIELD_STRATEGY_REPLACE );
         FIELD_STRATEGY_VALID.add( FIELD_STRATEGY_UPDATE );
 
-        FIELD_VALUE_TYPE_VALID = new TreeSet<String>();
+        FIELD_VALUE_TYPE_VALID = new TreeSet<>();
         FIELD_VALUE_TYPE_VALID.add ( FIELD_VALUE_TYPE_PROPERTIES );
         FIELD_VALUE_TYPE_VALID.add ( FIELD_VALUE_TYPE_REFERENCE );
         FIELD_VALUE_TYPE_VALID.add ( FIELD_VALUE_TYPE_SERVICE );
@@ -373,7 +375,7 @@ public class ReferenceMetadata
             return;
         }
 
-        m_field_collection_type = valuetype;
+        m_collection_type = valuetype;
     }
 
     public void setScope(String scopeName) {
@@ -532,7 +534,7 @@ public class ReferenceMetadata
      */
     public String getFieldCollectionType()
     {
-        return m_field_collection_type;
+        return m_collection_type;
     }
 
     /**
@@ -540,11 +542,23 @@ public class ReferenceMetadata
      * This method returns the correct value only after this metadata object has been validated
      * by a call to {@link #validate(ComponentMetadata, Logger)} and the validation has been
      * successful.
+     * DS 1.4
      * @return The parameter index , if no parameter is set this returns {@code -null}
      */
     public Integer getParameterIndex()
     {
     	return m_parameterIndex;
+    }
+
+    /**
+     * Get the value type of a parameter in the component implementation class that is used to hold
+     * the reference
+     * DS 1.4
+     * @return a String with the value type for the parameter
+     */
+    public String getParameterCollectionType()
+    {
+        return m_collection_type;
     }
 
     // Getters for boolean values that determine both policy and cardinality
@@ -679,19 +693,18 @@ public class ReferenceMetadata
         }
 
         if (m_scopeName != null) {
-        	if ( !dsVersion.isDS13() )
-        	{
-        		throw componentMetadata.validationFailure( "reference scope can be set only for DS >= 1.3");
-        	}
-        	try
-        	{
-        		m_scope = ReferenceScope.valueOf(m_scopeName);
-        	}
-        	catch (final IllegalArgumentException e)
-        	{
-        		throw componentMetadata.validationFailure( "reference scope must be 'bundle' or 'prototype' not " + m_scopeName);
-
-        	}
+        	    if ( !dsVersion.isDS13() )
+        	    {
+        		    throw componentMetadata.validationFailure( "reference scope can be set only for DS >= 1.3");
+        	    }
+            	try
+        	    {
+        		    m_scope = ReferenceScope.valueOf(m_scopeName);
+        	    }
+        	    catch (final IllegalArgumentException e)
+        	    {
+        		    throw componentMetadata.validationFailure( "reference scope must be 'bundle' or 'prototype' not " + m_scopeName);
+        	    }
         }
 
         // checks for event based injection
@@ -733,18 +746,19 @@ public class ReferenceMetadata
             if ( !m_isMultiple )
             {
                 // value type must not be specified for unary references
-                if ( m_field_collection_type != null )
+                if ( m_collection_type != null )
                 {
-                    throw componentMetadata.validationFailure( "Field value type must not be set for unary field references." );
+                    // spec says to ignore this
+                    this.m_collection_type = null;
                 }
             }
             else
             {
-                if ( m_field_collection_type == null )
+                if ( m_collection_type == null )
                 {
                     setFieldCollectionType( FIELD_VALUE_TYPE_SERVICE );
                 }
-                else if ( !FIELD_VALUE_TYPE_VALID.contains( m_field_collection_type ) )
+                else if ( !FIELD_VALUE_TYPE_VALID.contains( m_collection_type ) )
                 {
                     throw componentMetadata.validationFailure( "Field value type must be one of " + FIELD_VALUE_TYPE_VALID );
                 }
@@ -760,7 +774,7 @@ public class ReferenceMetadata
             }
             try
             {
-            	m_parameterIndex = Integer.valueOf(m_parameter);
+              	m_parameterIndex = Integer.valueOf(m_parameter);
             }
             catch ( final NumberFormatException nfe)
             {
@@ -770,11 +784,26 @@ public class ReferenceMetadata
             {
                 throw componentMetadata.validationFailure( "Reference parameter value must be zero or higher: " + m_parameter );
             }
-            // policy needs to be static
-            if ( !isStatic() )
+            // parameter value type
+            if ( !m_isMultiple )
             {
-                throw componentMetadata.validationFailure( "Reference with parameter value must be static." );
-
+                // value type must not be specified for unary references
+                if ( m_collection_type != null )
+                {
+                    // spec says to ignore this
+                    this.m_collection_type = null;
+                }
+            }
+            else
+            {
+                if ( m_collection_type == null )
+                {
+                    setFieldCollectionType( FIELD_VALUE_TYPE_SERVICE );
+                }
+                else if ( !FIELD_VALUE_TYPE_VALID.contains( m_collection_type ) )
+                {
+                    throw componentMetadata.validationFailure( "Collection value type must be one of " + FIELD_VALUE_TYPE_VALID );
+                }
             }
         }
         m_validated = true;
@@ -792,6 +821,7 @@ public class ReferenceMetadata
                 ", updated=" + this.getUpdated() +
                 ", field=" + this.getField() +
                 ", field-option=" + this.getFieldOption() +
-                ", field-collection-type=" + this.getFieldCollectionType();
+                ", collection-type=" + this.getFieldCollectionType() +
+                ", parameter=" + this.getParameterIndex();
     }
 }

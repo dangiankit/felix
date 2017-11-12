@@ -76,6 +76,7 @@ public class ConfigurationHandler
     protected static final int TOKEN_COMMA = ',';
     protected static final int TOKEN_VAL_OPEN = '"'; // '{';
     protected static final int TOKEN_VAL_CLOS = '"'; // '}';
+    protected static final int TOKEN_SPACE = ' ';
 
     protected static final int TOKEN_COMMENT = '#';
 
@@ -342,8 +343,8 @@ public class ConfigurationHandler
      */
     private Object readValue( PushbackReader pr ) throws IOException
     {
-        // read (optional) type code
-        int type = read( pr );
+        // read past any whitespace and (optional) type code
+        int type = ignorableWhiteSpace( pr );
 
         // read value kind code if type code is not a value kinde code
         int code;
@@ -479,13 +480,19 @@ public class ConfigurationHandler
 
             case TOKEN_SIMPLE_FLOAT:
             case TOKEN_PRIMITIVE_FLOAT:
-                int fBits = Integer.parseInt( readQuoted( pr ) );
-                return new Float( Float.intBitsToFloat( fBits ) );
+                String fString = readQuoted( pr );
+                if ( fString.indexOf('.') >= 0 )
+                    return Float.valueOf( fString );
+                else
+                    return Float.intBitsToFloat( Integer.parseInt( fString ) );
 
             case TOKEN_SIMPLE_DOUBLE:
             case TOKEN_PRIMITIVE_DOUBLE:
-                long dBits = Long.parseLong( readQuoted( pr ) );
-                return new Double( Double.longBitsToDouble( dBits ) );
+                String dString = readQuoted( pr );
+                if (dString.indexOf('.') >= 0 )
+                    return Double.valueOf( dString );
+                else
+                    return Double.longBitsToDouble( Long.parseLong( dString ) );
 
             case TOKEN_SIMPLE_BYTE:
             case TOKEN_PRIMITIVE_BYTE:
@@ -573,6 +580,66 @@ public class ConfigurationHandler
                 case -1: // fall through
 
                 // separator token
+                case TOKEN_VAL_CLOS:
+                    pr.unread( c );
+                    return buf.toString();
+
+                // no escaping
+                default:
+                    buf.append( ( char ) c );
+            }
+        }
+    }
+
+    private String readUnquoted( PushbackReader pr ) throws IOException
+    {
+        StringBuffer buf = new StringBuffer();
+        for ( ;; )
+        {
+            int c = read( pr );
+            switch ( c )
+            {
+                // escaped character
+                case '\\':
+                    c = read( pr );
+                    switch ( c )
+                    {
+                        // well known escapes
+                        case 'b':
+                            buf.append( '\b' );
+                            break;
+                        case 't':
+                            buf.append( '\t' );
+                            break;
+                        case 'n':
+                            buf.append( '\n' );
+                            break;
+                        case 'f':
+                            buf.append( '\f' );
+                            break;
+                        case 'r':
+                            buf.append( '\r' );
+                            break;
+                        case 'u':// need 4 characters !
+                            char[] cbuf = new char[4];
+                            if ( read( pr, cbuf ) == 4 )
+                            {
+                                c = Integer.parseInt( new String( cbuf ), 16 );
+                                buf.append( ( char ) c );
+                            }
+                            break;
+
+                        // just an escaped character, unescape
+                        default:
+                            buf.append( ( char ) c );
+                    }
+                    break;
+
+                // eof
+                case -1: // fall through
+
+                // separator token
+                case TOKEN_SPACE:
                 case TOKEN_EQ:
                 case TOKEN_VAL_CLOS:
                     pr.unread( c );
@@ -616,7 +683,7 @@ public class ConfigurationHandler
         {
             // read the property name
             pr.unread( c );
-            tokenValue = readQuoted( pr );
+            tokenValue = readUnquoted( pr );
             return ( token = TOKEN_NAME );
         }
 
@@ -801,17 +868,6 @@ public class ConfigurationHandler
 
     private static void writeSimple( Writer out, Object value ) throws IOException
     {
-        if ( value instanceof Double )
-        {
-            double dVal = ( ( Double ) value ).doubleValue();
-            value = new Long( Double.doubleToRawLongBits( dVal ) );
-        }
-        else if ( value instanceof Float )
-        {
-            float fVal = ( ( Float ) value ).floatValue();
-            value = new Integer( Float.floatToRawIntBits( fVal ) );
-        }
-
         out.write( TOKEN_VAL_OPEN );
         writeQuoted( out, String.valueOf( value ) );
         out.write( TOKEN_VAL_CLOS );
@@ -834,8 +890,6 @@ public class ConfigurationHandler
             {
                 case '\\':
                 case TOKEN_VAL_CLOS:
-                case ' ':
-                case TOKEN_EQ:
                     out.write( '\\' );
                     out.write( c );
                     break;

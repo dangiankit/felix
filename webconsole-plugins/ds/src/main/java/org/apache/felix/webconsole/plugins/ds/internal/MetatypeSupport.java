@@ -16,38 +16,27 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.felix.cm.impl;
+package org.apache.felix.webconsole.plugins.ds.internal;
 
+import org.osgi.framework.Bundle;
+import org.osgi.service.metatype.MetaTypeInformation;
+import org.osgi.service.metatype.MetaTypeService;
 
-public class MockConfigurationManager extends ConfigurationManager
+public class MetatypeSupport
 {
 
-    void updated( ConfigurationImpl config, boolean fireEvent )
+    public boolean check(final Object obj, final Bundle providingBundle, final String pid)
     {
-        // do nothing, might register the update call
-    }
-
-
-    void deleted( ConfigurationImpl config )
-    {
-        // do nothing, might register the update call
-    }
-
-
-    void revokeConfiguration( ConfigurationImpl config )
-    {
-        // do nothing, might register the update call
-    }
-
-
-    void reassignConfiguration( ConfigurationImpl config )
-    {
-        // do nothing, might register the update call
-    }
-
-
-    public void log( int level, String message, Throwable t )
-    {
-        // no logging for now
+        final MetaTypeService mts = (MetaTypeService)obj;
+        final MetaTypeInformation mti = mts.getMetaTypeInformation(providingBundle);
+        if (mti != null)
+        {
+            try {
+                return mti.getObjectClassDefinition(pid, null) != null;
+            } catch (final IllegalArgumentException e) {
+                return false;
+            }
+        }
+        return false;
     }
 }

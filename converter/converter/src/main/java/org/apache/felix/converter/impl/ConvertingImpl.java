@@ -47,7 +47,7 @@ import org.osgi.util.converter.Converter;
 import org.osgi.util.converter.Converting;
 import org.osgi.util.converter.TypeReference;
 
-public class ConvertingImpl extends AbstractSpecifying<Converting> implements Converting, InternalConverting {
+class ConvertingImpl extends AbstractSpecifying<Converting> implements Converting, InternalConverting {
     private static final Map<Class<?>, Class<?>> INTERFACE_IMPLS;
     static {
         Map<Class<?>, Class<?>> m = new HashMap<>();
@@ -138,9 +138,7 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
             return convertToArray();
         } else if (Collection.class.isAssignableFrom(targetAsClass)) {
             return convertToCollection();
-        } else if (targetAsDTO || DTOUtil.isDTOType(targetAsClass)) {
-            return convertToDTO();
-        } else if (isMapType(targetAsClass, targetAsJavaBean)) {
+        } else if (targetAsDTO || targetAsJavaBean || isMapType(targetAsClass, targetAsJavaBean)) {
             return convertToMapType();
         }
 
@@ -251,14 +249,11 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
     }
 
     @SuppressWarnings({ "rawtypes", "unchecked" })
-    private <T> T convertToDTO() {
-        Map m = mapView(object, sourceClass, converter);
+    private <T> T convertToDTO(Class<?> sourceCls, Class<?> targetAsCls) {
+        Map m = mapView(object, sourceCls, converter);
 
-        Class<?> cls = targetAsClass;
-        if (targetAsDTO)
-            cls = targetClass;
         try {
-            String prefix = Util.getPrefix(cls);
+            String prefix = Util.getPrefix(targetAsCls);
 
             T dto = (T) targetClass.newInstance();
 
@@ -273,15 +268,15 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
 
                 Field f = null;
                 try {
-                    f = cls.getDeclaredField(fieldName);
+                    f = targetAsCls.getDeclaredField(fieldName);
                 } catch (NoSuchFieldException e) {
                     try {
-                        f = cls.getField(fieldName);
+                        f = targetAsCls.getField(fieldName);
                     } catch (NoSuchFieldException | NullPointerException e1) {
                         // There is no field with this name
                         if (keysIgnoreCase) {
                             // If enabled, try again but now ignore case
-                            for (Field fs : cls.getDeclaredFields()) {
+                            for (Field fs : targetAsCls.getDeclaredFields()) {
                                 if (fs.getName().equalsIgnoreCase(fieldName)) {
                                     f = fs;
                                     break;
@@ -289,7 +284,7 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
                             }
 
                             if (f == null) {
-                                for (Field fs : cls.getFields()) {
+                                for (Field fs : targetAsCls.getFields()) {
                                     if (fs.getName().equalsIgnoreCase(fieldName)) {
                                         f = fs;
                                         break;
@@ -354,8 +349,7 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
                 if (isCopyRequiredType(cls)) {
                     cls = getConstructableType(cls);
                 }
-                // NOTE (dml): I think this should be an "OR", not an "AND"
-                // TODO: confirm with some additional tests (all tests pass for now)
+
                 if (sourceAsDTO || DTOUtil.isDTOType(cls))
                     value = converter.convert(value).sourceAsDTO().to(cls);
                 else
@@ -383,7 +377,7 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
         return MapDelegate.forInterface(object, this);
     }
 
-    @SuppressWarnings({ "unchecked", "rawtypes" })
+    @SuppressWarnings("rawtypes")
     private Object convertToMapType() {
         if (Map.class.equals(targetClass) && !forceCopy) {
             Map res = convertToMapDelegate();
@@ -394,25 +388,34 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
         if (Map.class.isAssignableFrom(targetAsClass))
             return convertToMap();
         else if (Dictionary.class.isAssignableFrom(targetAsClass))
-            return new Hashtable((Map) converter.convert(object).to(new ParameterizedType() {
-                @Override
-                public Type getRawType() {
-                    return HashMap.class;
-                }
-
-                @Override
-                public Type getOwnerType() {
-                    return null;
-                }
-
-                @Override
-                public Type[] getActualTypeArguments() {
-                    return typeArguments;
-                }
-            }));
+            return convertToDictionary();
+        else if (targetAsDTO || DTOUtil.isDTOType(targetAsClass))
+            return convertToDTO(sourceClass, targetAsClass);
         else if (targetAsClass.isInterface())
             return createInterface(sourceClass, targetAsClass);
-        return createJavaBean(sourceClass, targetAsClass);
+        else if (targetAsJavaBean)
+            return createJavaBean(sourceClass, targetAsClass);
+        throw new ConversionException("Cannot convert " + object + " to " + targetAsClass);
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private Object convertToDictionary() {
+        return new Hashtable((Map) converter.convert(object).to(new ParameterizedType() {
+            @Override
+            public Type getRawType() {
+                return HashMap.class;
+            }
+
+            @Override
+            public Type getOwnerType() {
+                return null;
+            }
+
+            @Override
+            public Type[] getActualTypeArguments() {
+                return typeArguments;
+            }
+        }));
     }
 
     private Object createJavaBean(Class<?> sourceCls, Class<?> targetCls) {
@@ -530,18 +533,9 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
     }
 
     private Object trySpecialCases() {
-        // TODO some of these can probably be implemented as an adapter
-
         if (Boolean.class.equals(targetAsClass)) {
-            if (object instanceof Number) {
-                return ((Number) object).longValue() != 0;
-            } else if (object instanceof Collection && ((Collection<?>) object).size() == 0) {
-                // TODO What about arrays?
+            if (object instanceof Collection && ((Collection<?>) object).size() == 0) {
                 return Boolean.FALSE;
-            }
-        } else if (Character.class.equals(targetAsClass)) {
-            if (object instanceof Number) {
-                return Character.valueOf((char) ((Number) object).intValue());
             }
         } else if (Number.class.isAssignableFrom(targetAsClass)) {
             if (object instanceof Boolean) {
@@ -560,10 +554,6 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
                 } else if (Double.class.isAssignableFrom(targetAsClass)) {
                     return ((Number) object).doubleValue();
                 }
-            }
-        } else if (Class.class.equals(targetAsClass)) {
-            if (object instanceof Collection && ((Collection<?>) object).size() == 0) {
-                return null;
             }
         } else if (Enum.class.isAssignableFrom(targetAsClass)) {
             if (object instanceof Number) {
@@ -838,7 +828,6 @@ public class ConvertingImpl extends AbstractSpecifying<Converting> implements Co
         return Map.class.isAssignableFrom(cls) ||
                 Collection.class.isAssignableFrom(cls) ||
                 DTOUtil.isDTOType(cls) ||
-                // isJavaBean
                 cls.isArray();
     }
 

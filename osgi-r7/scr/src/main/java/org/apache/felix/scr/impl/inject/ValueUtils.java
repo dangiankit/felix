@@ -25,10 +25,11 @@ import java.lang.reflect.Modifier;
 import java.util.Map;
 
 import org.apache.felix.scr.impl.helper.ReadOnlyDictionary;
-import org.apache.felix.scr.impl.helper.SimpleLogger;
+import org.apache.felix.scr.impl.logger.ComponentLogger;
 import org.apache.felix.scr.impl.manager.ComponentContextImpl;
 import org.apache.felix.scr.impl.manager.RefPair;
 import org.apache.felix.scr.impl.metadata.ReferenceMetadata;
+import org.osgi.framework.Bundle;
 import org.osgi.framework.ServiceReference;
 import org.osgi.service.log.LogService;
 
@@ -80,10 +81,11 @@ public class ValueUtils {
         {
             return ValueType.config_map;
         }
-        else
+        else if ( typeClass.isAnnotation() )
         {
             return ValueType.config_annotation;
         }
+        return ValueType.ignore;
     }
 
     /**
@@ -101,7 +103,7 @@ public class ValueUtils {
             final ReferenceMetadata metadata,
             final Class<?> typeClass,
             final Field field,
-            final SimpleLogger logger )
+            final ComponentLogger logger )
     {
         final Class<?> referenceType = ClassUtils.getClassFromComponentClassLoader(
                 componentClass, metadata.getInterface(), logger);
@@ -150,51 +152,52 @@ public class ValueUtils {
             {
                 if ( field != null )
                 {
-                    logger.log( LogService.LOG_ERROR, "Field {0} in component {1} has unsupported type {2}", new Object[]
-                            {metadata.getField(), componentClass, typeClass.getName()}, null );
+                    logger.log( LogService.LOG_ERROR, "Field {0} in class {1} has unsupported type {2}", null,
+                            metadata.getField(), componentClass, typeClass.getName() );
                 }
                 else
                 {
-                    logger.log( LogService.LOG_ERROR, "Constructor argument {0} in component {1} has unsupported type {2}", new Object[]
-                            {metadata.getParameterIndex(), componentClass, typeClass.getName()}, null );
+                    logger.log( LogService.LOG_ERROR, "Constructor argument {0} in class {1} has unsupported type {2}", null,
+                            metadata.getParameterIndex(), componentClass, typeClass.getName() );
                 }
                 valueType = ValueType.ignore;
             }
 
             // if the field is dynamic, it has to be volatile (field is ignored, case logged) (112.3.8.1)
             if ( field != null && !metadata.isStatic() && !Modifier.isVolatile(field.getModifiers()) ) {
-                logger.log( LogService.LOG_ERROR, "Field {0} in component {1} must be declared volatile to handle a dynamic reference", new Object[]
-                        {metadata.getField(), componentClass}, null );
+                logger.log( LogService.LOG_ERROR, "Field {0} in class {1} must be declared volatile to handle a dynamic reference", null,
+                        metadata.getField(), componentClass );
                 valueType = ValueType.ignore;
             }
 
             // the field must not be final (field is ignored, case logged) (112.3.8.1)
             if ( field != null && Modifier.isFinal(field.getModifiers()) )
             {
-                logger.log( LogService.LOG_ERROR, "Field {0} in component {1} must not be declared as final", new Object[]
-                        {metadata.getField(), componentClass}, null );
+                logger.log( LogService.LOG_ERROR, "Field {0} in class {1} must not be declared as final", null,
+                        metadata.getField(), componentClass );
                 valueType = ValueType.ignore;
             }
         }
         else
         {
-            if ( ReferenceMetadata.FIELD_VALUE_TYPE_SERVICE.equals(metadata.getFieldCollectionType()) )
+            String colType = field != null ? metadata.getFieldCollectionType() : metadata.getParameterCollectionType();
+            if ( ReferenceMetadata.FIELD_VALUE_TYPE_SERVICE.equals(colType) )
             {
                 valueType = ValueType.ref_serviceType;
             }
-            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_REFERENCE.equals(metadata.getFieldCollectionType()) )
+            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_REFERENCE.equals(colType) )
             {
                 valueType = ValueType.ref_serviceReference;
             }
-            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_SERVICEOBJECTS.equals(metadata.getFieldCollectionType()) )
+            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_SERVICEOBJECTS.equals(colType) )
             {
                 valueType = ValueType.ref_serviceObjects;
             }
-            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_PROPERTIES.equals(metadata.getFieldCollectionType()) )
+            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_PROPERTIES.equals(colType) )
             {
                 valueType = ValueType.ref_map;
             }
-            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_TUPLE.equals(metadata.getFieldCollectionType()) )
+            else if ( ReferenceMetadata.FIELD_VALUE_TYPE_TUPLE.equals(colType) )
             {
                 valueType = ValueType.ref_tuple;
             }
@@ -204,13 +207,13 @@ public class ValueUtils {
             {
                 if ( field != null )
                 {
-                    logger.log( LogService.LOG_ERROR, "Field {0} in component {1} has unsupported type {2}", new Object[]
-                            {metadata.getField(), componentClass, typeClass.getName()}, null );
+                    logger.log( LogService.LOG_ERROR, "Field {0} in class {1} has unsupported type {2}", null,
+                            metadata.getField(), componentClass, typeClass.getName() );
                 }
                 else
                 {
-                    logger.log( LogService.LOG_ERROR, "Constructor argument {0} in component {1} has unsupported type {2}", new Object[]
-                            {metadata.getParameterIndex(), componentClass, typeClass.getName()}, null );
+                    logger.log( LogService.LOG_ERROR, "Constructor argument {0} in class {1} has unsupported type {2}", null,
+                            metadata.getParameterIndex(), componentClass, typeClass.getName() );
                 }
                 valueType = ValueType.ignore;
             }
@@ -221,8 +224,8 @@ public class ValueUtils {
                 // if the field is dynamic wit has to be volatile (field is ignored, case logged) (112.3.8.1)
                 if ( !metadata.isStatic() && !Modifier.isVolatile(field.getModifiers()) )
                 {
-                    logger.log( LogService.LOG_ERROR, "Field {0} in component {1} must be declared volatile to handle a dynamic reference", new Object[]
-                            {metadata.getField(), componentClass}, null );
+                    logger.log( LogService.LOG_ERROR, "Field {0} in class {1} must be declared volatile to handle a dynamic reference", null,
+                            metadata.getField(), componentClass );
                     valueType = ValueType.ignore;
                 }
 
@@ -230,25 +233,25 @@ public class ValueUtils {
                 //                   only collection and list allowed
                 if ( typeClass != ClassUtils.LIST_CLASS && typeClass != ClassUtils.COLLECTION_CLASS )
                 {
-                    logger.log( LogService.LOG_ERROR, "Field {0} in component {1} has unsupported type {2}."+
-                            " It must be one of java.util.Collection or java.util.List.",
-                            new Object[] {metadata.getField(), componentClass, typeClass.getName()}, null );
+                    logger.log( LogService.LOG_ERROR, "Field {0} in class {1} has unsupported type {2}."+
+                            " It must be one of java.util.Collection or java.util.List.", null,
+                            metadata.getField(), componentClass, typeClass.getName() );
                     valueType = ValueType.ignore;
 
                 }
                 if ( Modifier.isFinal(field.getModifiers()) )
                 {
-                    logger.log( LogService.LOG_ERROR, "Field {0} in component {1} must not be declared as final", new Object[]
-                            {metadata.getField(), componentClass}, null );
+                    logger.log( LogService.LOG_ERROR, "Field {0} in class {1} must not be declared as final", null,
+                            metadata.getField(), componentClass );
                     valueType = ValueType.ignore;
                 }
             }
         }
         // static references only allowed for replace strategy
-        if ( metadata.isStatic() && !metadata.isReplace() )
+        if ( field != null && metadata.isStatic() && !metadata.isReplace() )
         {
-            logger.log( LogService.LOG_ERROR, "Update strategy for field {0} in component {1} only allowed for non static field references.", new Object[]
-                    {metadata.getField(), componentClass}, null );
+            logger.log( LogService.LOG_ERROR, "Update strategy for field {0} in class {1} only allowed for non static field references.", null,
+                    metadata.getField(), componentClass );
             valueType = ValueType.ignore;
         }
         return valueType;
@@ -318,17 +321,9 @@ public class ValueUtils {
         {
             Exception error = null;
             try {
-                final Method m = factory.getClass().getMethod("getLogger", new Class[] {String.class, Class.class});
-                return m.invoke(factory, new Object[] {componentType, targetType});
-            } catch (NoSuchMethodException e) {
-                error = e;
-            } catch (SecurityException e) {
-                error = e;
-            } catch (IllegalAccessException e) {
-                error = e;
-            } catch (IllegalArgumentException e) {
-                error = e;
-            } catch (InvocationTargetException e) {
+                final Method m = factory.getClass().getMethod("getLogger", new Class[] {Bundle.class, String.class, Class.class});
+                return m.invoke(factory, new Object[] {componentContext.getBundleContext().getBundle(), componentType, targetType});
+            } catch (final NoSuchMethodException | SecurityException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
                 error = e;
             }
             componentContext.getLogger().log( LogService.LOG_ERROR, "Unexpected error while trying to get logger.", null, error );

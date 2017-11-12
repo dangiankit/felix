@@ -18,7 +18,6 @@
  */
 package org.apache.felix.scr.impl.inject;
 
-import org.apache.felix.scr.impl.helper.SimpleLogger;
 import org.apache.felix.scr.impl.manager.ComponentContextImpl;
 
 public abstract class BaseParameter
@@ -34,10 +33,5 @@ public abstract class BaseParameter
     public ComponentContextImpl<?> getComponentContext()
     {
         return m_componentContext;
-    }
-
-    public SimpleLogger getLogger()
-    {
-        return m_componentContext.getLogger();
     }
 }

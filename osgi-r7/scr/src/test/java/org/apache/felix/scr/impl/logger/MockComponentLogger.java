@@ -16,43 +16,27 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.felix.scr.impl;
+package org.apache.felix.scr.impl.logger;
 
-
-import java.text.MessageFormat;
-
-import org.apache.felix.scr.impl.helper.Logger;
 import org.apache.felix.scr.impl.metadata.ComponentMetadata;
+import org.apache.felix.scr.impl.metadata.DSVersion;
 
-
-public class MockLogger implements Logger
+public class MockComponentLogger extends ComponentLogger
 {
-    String lastMessage;
-
-
-    public boolean isLogEnabled( int level )
+    public MockComponentLogger()
     {
-        return true;
+        super(new ComponentMetadata(DSVersion.DS14), new MockBundleLogger());
     }
 
-
-    public void log( int level, String pattern, Object[] arguments, ComponentMetadata metadata, Long componentId, Throwable ex )
+    @Override
+    public void log(final int level, final String pattern, final Throwable ex, final Object... arguments)
     {
-        if ( isLogEnabled( level ) )
-        {
-            log( level, MessageFormat.format( pattern, arguments ), metadata, null, ex );
-        }
+        // ignore
     }
 
-
-    public void log( int level, String message, ComponentMetadata metadata, Long componentId, Throwable ex )
+    @Override
+    public void log(final int level, final String message, final Throwable ex)
     {
-        lastMessage = message;
-    }
-
-
-    public boolean messageContains( String value )
-    {
-        return lastMessage != null && lastMessage.indexOf( value ) >= 0;
+        // ignore
     }
 }

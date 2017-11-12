@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +75,69 @@ public class TypedPropertiesTest extends TestCase {
         p2.load(new StringReader(sw.toString()));
         assertEquals(8101, p2.get("port"));
         assertEquals("test", p2.get("test"));
+    }
+
+    public void testLoadTypedProps2() throws IOException
+    {
+        TypedProperties properties = new TypedProperties();
+        properties.load(this.getClass().getClassLoader().getResourceAsStream("typed2.properties"));
+        assertEquals("wlp3s0", properties.get("networkInterface"));
+    }
+
+    public void testLoadTypedProps3() throws IOException
+    {
+        TypedProperties properties = new TypedProperties();
+        properties.load(this.getClass().getClassLoader().getResourceAsStream("typed3.properties"));
+        assertEquals(21, properties.get("bla"));
+    }
+
+    public void testWriteTypedPropsFloat() throws IOException
+    {
+        TypedProperties properties = new TypedProperties();
+        properties.load(new StringReader("key = F\"1137191584\"\n"));
+        assertEquals(400.333f, properties.get("key"));
+    }
+
+    public void testReadStringWithEqual() throws IOException
+    {
+        TypedProperties properties = new TypedProperties();
+        properties.load(new StringReader("key = \"foo=bar\"\n"));
+        assertEquals("foo=bar", properties.get("key"));
+    }
+
+    public void testWriteTypedPropsFloat2() throws IOException
+    {
+        TypedProperties properties = new TypedProperties();
+        properties.put("key", 400.333f);
+        StringWriter sw = new StringWriter();
+        properties.save(sw);
+        assertEquals("key = F\"400.333\"\n", sw.toString());
+        properties = new TypedProperties();
+        properties.load(new StringReader(sw.toString()));
+        assertEquals(400.333f, properties.get("key"));
+    }
+
+    public void testSubstitution() throws IOException
+    {
+        String str = "port = 4141\n" +
+                     "host = localhost\n" +
+                     "url = https://${host}:${port}/service\n";
+        TypedProperties properties = new TypedProperties();
+        properties.load(new StringReader(str));
+        properties.put("url", "https://localhost:4141/service");
+        StringWriter sw = new StringWriter();
+        properties.save(sw);
+        assertEquals(str, sw.toString());
+    }
+
+    public void testWriteTypedPropsStringWithSpaces() throws IOException
+    {
+        TypedProperties properties = new TypedProperties();
+        properties.put("key", 3); // force the config to be typed
+        properties.put("key", "s 1");
+        StringWriter sw = new StringWriter();
+        properties.save(sw);
+        assertEquals("key = \"s 1\"\n", sw.toString());
     }
 
 }
